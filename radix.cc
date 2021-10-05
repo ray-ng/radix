@@ -2,14 +2,14 @@
 
 namespace radix {
 
-inline const Slice radix_substr(const Slice &key, int begin, int num) {
+inline const Slice radix_substr(const Slice& key, int begin, int num) {
   if (begin < 0 || num < 0 || begin + num > key.size()) {
     return Slice();
   }
   return Slice(key.data() + begin, num);
 }
 
-inline const Slice radix_join(const Slice &key1, const Slice &key2) {
+inline const Slice radix_join(const Slice& key1, const Slice& key2) {
   if (key1.data() + key1.size() == key2.data()) {
     return Slice(key1.data(), key1.size() + key2.size());
   } else if (key2.data() + key2.size() == key1.data()) {
@@ -19,12 +19,14 @@ inline const Slice radix_join(const Slice &key1, const Slice &key2) {
   }
 }
 
-inline int radix_length(const Slice &key) {
+inline int radix_length(const Slice& key) {
   return key.size();
 }
 
 template <typename V>
-bool radix_tree<V>::UTF8Decode(const char *key, size_t len, std::vector<Slice> &uchars) const {
+bool radix_tree<V>::UTF8Decode(const char* key,
+                               size_t len,
+                               std::vector<Slice>& uchars) const {
   char c;
   int code_len;
 
@@ -64,8 +66,8 @@ bool radix_tree<V>::UTF8Decode(const char *key, size_t len, std::vector<Slice> &
 }
 
 template <typename V>
-bool radix_tree<V>::SliceDecode(const Slice &key, Slice *uchar) const {
-  const char *str = key.data();
+bool radix_tree<V>::SliceDecode(const Slice& key, Slice* uchar) const {
+  const char* str = key.data();
   size_t len = key.size();
   char c;
   int code_len;
@@ -109,25 +111,27 @@ bool radix_tree<V>::SliceDecode(const Slice &key, Slice *uchar) const {
 static const Slice CHILD = Slice("__CHILD");
 
 template <typename V>
-void radix_tree<V>::insert(const std::string &pattern, V value) {
+void radix_tree<V>::insert(const std::string& pattern, V value) {
   if (pattern.empty()) {
     return;
   }
 
   std::vector<Slice> uchars;
-  if (!UTF8Decode(pattern.c_str(), pattern.length(), uchars) || uchars.empty()) {
+  if (!UTF8Decode(pattern.c_str(), pattern.length(), uchars) ||
+      uchars.empty()) {
     return;
   }
   Slice insert_key(pattern);
 
-  std::tuple<radix_tree_node<V> *, int, int> node_depth = find_node(uchars);
-  radix_tree_node<V> *match_node = std::get<0>(node_depth);
+  std::tuple<radix_tree_node<V>*, int, int> node_depth = find_node(uchars);
+  radix_tree_node<V>* match_node = std::get<0>(node_depth);
   int match_count = std::get<1>(node_depth);
   int match_depth = std::get<2>(node_depth);
 
   if (match_depth == uchars.size() && match_count == match_node->m_key.size()) {
-    if (match_node->m_first != nullptr && match_node->m_first->m_value != nullptr) {
-      match_node->m_first->m_value->emplace_back(value);
+    if (match_node->m_leaf != nullptr &&
+        match_node->m_leaf->m_value != nullptr) {
+      match_node->m_leaf->m_value->emplace_back(value);
       // update_node(uchars, match_node->m_last, match_node->m_last);
       return;
     }
@@ -135,16 +139,17 @@ void radix_tree<V>::insert(const std::string &pattern, V value) {
 
   if (match_count < match_node->m_key.size()) {
     Slice new_key;
-    if (SliceDecode(radix_substr(match_node->m_key, match_count, match_node->m_key.size() - match_count),
+    if (SliceDecode(radix_substr(match_node->m_key, match_count,
+                                 match_node->m_key.size() - match_count),
                     &new_key)) {
-      radix_tree_node<V> *new_leaf = new radix_tree_node<V>(CHILD, value);
-      radix_tree_node<V> *new_node = new radix_tree_node<V>();
+      radix_tree_node<V>* new_leaf = new radix_tree_node<V>(CHILD, value);
+      radix_tree_node<V>* new_node = new radix_tree_node<V>();
       new_node->swap(*match_node);
       match_node->m_key = radix_substr(new_node->m_key, 0, match_count);
       new_node->m_key.remove_prefix(match_count);
       new_leaf->m_key = match_node->m_key;
 
-      radix_tree_node<V> *temp_last = new_node->m_last;
+      radix_tree_node<V>* temp_last = new_node->m_last;
       if (temp_last->m_last != nullptr) {
         temp_last->m_last->m_first = new_leaf;
         new_leaf->m_last = temp_last->m_last;
@@ -157,43 +162,55 @@ void radix_tree<V>::insert(const std::string &pattern, V value) {
       match_node->m_children[new_key] = new_node;
 
       if (match_depth != uchars.size()) {
-        radix_tree_node<V> *new_node1 = new radix_tree_node<V>();
+        radix_tree_node<V>* new_node1 = new radix_tree_node<V>();
         int total_count = 0;
         for (int i = 0; i < match_depth; ++i) {
           total_count += uchars[i].size();
         }
-        m_patterns.push_back(
-            radix_substr(insert_key, total_count, insert_key.size() - total_count).ToString());
+        m_patterns.push_back(radix_substr(insert_key, total_count,
+                                          insert_key.size() - total_count)
+                                 .ToString());
         Slice leaf_key = Slice(m_patterns.back());
         new_node1->m_key = leaf_key;
         new_node1->m_first = new_leaf;
         new_node1->m_last = new_leaf;
+        new_node1->m_leaf = new_leaf;
         new_leaf->m_key = leaf_key;
-        match_node->m_children[radix_substr(leaf_key, 0, uchars[match_depth].size())] = new_node1;
+        match_node->m_children[radix_substr(
+            leaf_key, 0, uchars[match_depth].size())] = new_node1;
+      } else {
+        match_node->m_leaf = new_leaf;
       }
 
       update_node(uchars, temp_last, new_leaf);
     }
   } else if (match_count == match_node->m_key.size()) {
-    radix_tree_node<V> *new_leaf = new radix_tree_node<V>(CHILD, value);
+    radix_tree_node<V>* new_leaf = new radix_tree_node<V>(CHILD, value);
     new_leaf->m_key = match_node->m_key;
 
     if (match_depth != uchars.size()) {
-      radix_tree_node<V> *new_node1 = new radix_tree_node<V>();
+      radix_tree_node<V>* new_node1 = new radix_tree_node<V>();
       int total_count = 0;
       for (int i = 0; i < match_depth; ++i) {
         total_count += uchars[i].size();
       }
-      m_patterns.push_back(radix_substr(insert_key, total_count, insert_key.size() - total_count).ToString());
+      m_patterns.push_back(
+          radix_substr(insert_key, total_count, insert_key.size() - total_count)
+              .ToString());
       Slice leaf_key = Slice(m_patterns.back());
       new_node1->m_key = leaf_key;
       new_node1->m_first = new_leaf;
       new_node1->m_last = new_leaf;
+      new_node1->m_leaf = new_leaf;
       new_leaf->m_key = leaf_key;
-      match_node->m_children[radix_substr(leaf_key, 0, uchars[match_depth].size())] = new_node1;
+      match_node
+          ->m_children[radix_substr(leaf_key, 0, uchars[match_depth].size())] =
+          new_node1;
+    } else {
+      match_node->m_leaf = new_leaf;
     }
 
-    radix_tree_node<V> *temp_last = match_node->m_last;
+    radix_tree_node<V>* temp_last = match_node->m_last;
     if (temp_last == nullptr) {
       match_node->m_first = new_leaf;
       match_node->m_last = new_leaf;
@@ -211,22 +228,25 @@ void radix_tree<V>::insert(const std::string &pattern, V value) {
 }
 
 template <typename V>
-std::tuple<radix_tree_node<V> *, int, int> radix_tree<V>::find_node(const std::vector<Slice> &key) const {
+std::tuple<radix_tree_node<V>*, int, int> radix_tree<V>::find_node(
+    const std::vector<Slice>& key) const {
   int count = 0, depth = 0;
-  radix_tree_node<V> *result = m_root;
+  radix_tree_node<V>* result = m_root;
   if (key.empty()) {
     return {result, count, depth};
   }
 
   int len_key = key.size() - depth;
   while (len_key > 0) {
-    typename radix_tree_node<V>::it_child it = result->m_children.find(key[depth]);
+    typename radix_tree_node<V>::it_child it =
+        result->m_children.find(key[depth]);
     if (it == result->m_children.end()) {
       break;
     }
 
     result = it->second;
-    for (count = 0; count < result->m_key.size() && depth < key.size(); ++depth) {
+    for (count = 0; count < result->m_key.size() && depth < key.size();
+         ++depth) {
       int m_key_len = result->m_key.size() - count;
       if (m_key_len < key[depth].size() ||
           key[depth] != radix_substr(result->m_key, count, key[depth].size())) {
@@ -244,17 +264,19 @@ std::tuple<radix_tree_node<V> *, int, int> radix_tree<V>::find_node(const std::v
 }
 
 template <typename V>
-void radix_tree<V>::update_node(const std::vector<Slice> &key, radix_tree_node<V> *old_last,
-                                radix_tree_node<V> *new_last) {
+void radix_tree<V>::update_node(const std::vector<Slice>& key,
+                                radix_tree_node<V>* old_last,
+                                radix_tree_node<V>* new_last) {
   int count = 0, depth = 0;
-  radix_tree_node<V> *result = m_root;
+  radix_tree_node<V>* result = m_root;
   if (key.empty()) {
     return;
   }
 
   int len_key = key.size() - depth;
   while (len_key > 0) {
-    typename radix_tree_node<V>::it_child it = result->m_children.find(key[depth]);
+    typename radix_tree_node<V>::it_child it =
+        result->m_children.find(key[depth]);
     if (it == result->m_children.end()) {
       break;
     }
@@ -265,7 +287,8 @@ void radix_tree<V>::update_node(const std::vector<Slice> &key, radix_tree_node<V
     }
 
     result = it->second;
-    for (count = 0; count < result->m_key.size() && depth < key.size(); ++depth) {
+    for (count = 0; count < result->m_key.size() && depth < key.size();
+         ++depth) {
       int m_key_len = result->m_key.size() - count;
       if (m_key_len < key[depth].size() ||
           key[depth] != radix_substr(result->m_key, count, key[depth].size())) {
@@ -286,19 +309,19 @@ void radix_tree<V>::update_node(const std::vector<Slice> &key, radix_tree_node<V
 }
 
 template <typename V>
-void radix_tree<V>::match(const std::string &key, std::vector<V> &vec) const {
+void radix_tree<V>::match(const std::string& key, std::vector<V>& vec) const {
   std::vector<Slice> uchars;
   if (!UTF8Decode(key.data(), key.size(), uchars) || uchars.empty()) {
     return;
   }
 
-  std::tuple<radix_tree_node<V> *, int, int> node_depth = find_node(uchars);
-  radix_tree_node<V> *match_node = std::get<0>(node_depth);
+  std::tuple<radix_tree_node<V>*, int, int> node_depth = find_node(uchars);
+  radix_tree_node<V>* match_node = std::get<0>(node_depth);
   int match_count = std::get<1>(node_depth);
   int match_depth = std::get<2>(node_depth);
 
   if (match_depth == uchars.size()) {
-    radix_tree_node<V> *temp = match_node->m_first;
+    radix_tree_node<V>* temp = match_node->m_first;
     while (temp != nullptr) {
       if (temp->m_value != nullptr) {
         for (V p : *temp->m_value) {
@@ -314,28 +337,32 @@ void radix_tree<V>::match(const std::string &key, std::vector<V> &vec) const {
 }
 
 template <typename V>
-void radix_tree<V>::match(const std::string &key, std::vector<V> &vec, std::function<bool(V, V)> compfunc,
+void radix_tree<V>::match(const std::string& key,
+                          std::vector<V>& vec,
+                          std::function<bool(V, V)> compfunc,
                           int recall_limit) const {
   std::vector<Slice> uchars;
   if (!UTF8Decode(key.data(), key.size(), uchars) || uchars.empty()) {
     return;
   }
 
-  std::tuple<radix_tree_node<V> *, int, int> node_depth = find_node(uchars);
-  radix_tree_node<V> *match_node = std::get<0>(node_depth);
+  std::tuple<radix_tree_node<V>*, int, int> node_depth = find_node(uchars);
+  radix_tree_node<V>* match_node = std::get<0>(node_depth);
   int match_count = std::get<1>(node_depth);
   int match_depth = std::get<2>(node_depth);
 
   if (match_depth == uchars.size()) {
     if (match_node->m_heap != nullptr) {
-      int recall_num = recall_limit < match_node->m_heap->size() ? recall_limit : match_node->m_heap->size();
+      int recall_num = recall_limit < match_node->m_heap->size()
+                           ? recall_limit
+                           : match_node->m_heap->size();
       vec.reserve(recall_num);
       for (int i = 0; i < recall_num; ++i) {
         vec.push_back(match_node->m_heap->at(i));
       }
     } else {
       std::unordered_set<V> item_set;
-      radix_tree_node<V> *temp = match_node->m_first;
+      radix_tree_node<V>* temp = match_node->m_first;
       while (temp != nullptr) {
         if (temp->m_value != nullptr) {
           for (V p : *temp->m_value) {
@@ -357,14 +384,14 @@ void radix_tree<V>::match(const std::string &key, std::vector<V> &vec, std::func
 }
 
 template <typename V>
-radix_tree_iter<V> radix_tree<V>::match(const std::string &key) const {
+radix_tree_iter<V> radix_tree<V>::match(const std::string& key) const {
   std::vector<Slice> uchars;
   if (!UTF8Decode(key.data(), key.size(), uchars) || uchars.empty()) {
     return {nullptr, nullptr, 0};
   }
 
-  std::tuple<radix_tree_node<V> *, int, int> node_depth = find_node(uchars);
-  radix_tree_node<V> *match_node = std::get<0>(node_depth);
+  std::tuple<radix_tree_node<V>*, int, int> node_depth = find_node(uchars);
+  radix_tree_node<V>* match_node = std::get<0>(node_depth);
   int match_count = std::get<1>(node_depth);
   int match_depth = std::get<2>(node_depth);
 
@@ -378,7 +405,9 @@ radix_tree_iter<V> radix_tree<V>::match(const std::string &key) const {
 static const int nodes_threshold = 200;
 
 template <typename V>
-void radix_tree<V>::heap_insert(std::vector<V> *result, V item, std::function<bool(V, V)> compfunc,
+void radix_tree<V>::heap_insert(std::vector<V>* result,
+                                V item,
+                                std::function<bool(V, V)> compfunc,
                                 int recall_limit) {
   if (result == nullptr) {
     return;
@@ -395,16 +424,19 @@ void radix_tree<V>::heap_insert(std::vector<V> *result, V item, std::function<bo
 }
 
 template <typename V>
-void radix_tree<V>::finish(std::function<bool(V, V)> compfunc, int recall_limit) const {
-  if (m_root->m_count < nodes_threshold) return;
+void radix_tree<V>::finish(std::function<bool(V, V)> compfunc,
+                           int recall_limit) const {
+  if (m_root->m_count < nodes_threshold)
+    return;
 
-  std::vector<radix_tree_node<V> *> process_nodes;
+  std::vector<radix_tree_node<V>*> process_nodes;
   process_nodes.push_back(m_root);
   int index = 0;
 
   while (index < process_nodes.size()) {
-    radix_tree_node<V> *current = process_nodes[index];
-    for (typename radix_tree_node<V>::it_child iter = current->m_children.begin();
+    radix_tree_node<V>* current = process_nodes[index];
+    for (typename radix_tree_node<V>::it_child iter =
+             current->m_children.begin();
          iter != current->m_children.end(); ++iter) {
       if (iter->second->m_count > nodes_threshold) {
         process_nodes.push_back(iter->second);
@@ -414,15 +446,16 @@ void radix_tree<V>::finish(std::function<bool(V, V)> compfunc, int recall_limit)
   }
 
   for (int index = process_nodes.size() - 1; index >= 0; --index) {
-    radix_tree_node<V> *current = process_nodes[index];
+    radix_tree_node<V>* current = process_nodes[index];
     current->m_heap = new std::vector<V>();
     std::unordered_set<V> item_set;
-    std::vector<std::pair<radix_tree_node<V> *, radix_tree_node<V> *>> heap_range;
+    std::vector<std::pair<radix_tree_node<V>*, radix_tree_node<V>*>> heap_range;
     if (!current->m_children.empty()) {
       heap_range.reserve(current->m_children.size());
     }
 
-    for (typename radix_tree_node<V>::it_child iter = current->m_children.begin();
+    for (typename radix_tree_node<V>::it_child iter =
+             current->m_children.begin();
          iter != current->m_children.end(); ++iter) {
       if (iter->second->m_heap != nullptr) {
         for (V item : *iter->second->m_heap) {
@@ -437,7 +470,7 @@ void radix_tree<V>::finish(std::function<bool(V, V)> compfunc, int recall_limit)
     }
 
     int range_index = 0;
-    radix_tree_node<V> *temp = current->m_first;
+    radix_tree_node<V>* temp = current->m_first;
     bool skip_range = false;
     while (temp != nullptr) {
       if (range_index < heap_range.size()) {

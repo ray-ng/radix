@@ -19,40 +19,42 @@ class radix_tree_node {
   friend class radix_tree<V>;
   friend class radix_tree_iter<V>;
 
-  typedef typename std::map<Slice, radix_tree_node *>::iterator it_child;
+  typedef typename std::map<Slice, radix_tree_node*>::iterator it_child;
 
  public:
   radix_tree_node();
-  radix_tree_node(const Slice &key, V &value);
+  radix_tree_node(const Slice& key, V& value);
 
-  void swap(radix_tree_node &);
+  void swap(radix_tree_node&);
 
  private:
-  radix_tree_node(const radix_tree_node &);             // delete
-  radix_tree_node &operator=(const radix_tree_node &);  // delete
+  radix_tree_node(const radix_tree_node&);             // delete
+  radix_tree_node& operator=(const radix_tree_node&);  // delete
   ~radix_tree_node();
 
-  radix_tree_node *m_first = nullptr;
-  radix_tree_node *m_last = nullptr;
+  radix_tree_node* m_first = nullptr;
+  radix_tree_node* m_last = nullptr;
   Slice m_key;
   union {
     struct {
-      std::map<Slice, radix_tree_node *> m_children;
-      std::vector<V> *m_heap;
+      std::map<Slice, radix_tree_node*> m_children;
+      radix_tree_node* m_leaf;
+      std::vector<V>* m_heap;
     };
-    std::vector<V> *m_value;
+    std::vector<V>* m_value;
   };
   int m_count = 0;
 };
 
 template <typename V>
 radix_tree_node<V>::radix_tree_node() {
-  new (&m_children) std::map<Slice, radix_tree_node *>;
+  new (&m_children) std::map<Slice, radix_tree_node*>;
+  m_leaf = nullptr;
   m_heap = nullptr;
 }
 
 template <typename V>
-radix_tree_node<V>::radix_tree_node(const Slice &key, V &value)
+radix_tree_node<V>::radix_tree_node(const Slice& key, V& value)
     : m_value(new std::vector<V>{value}), m_key(key) {}
 
 template <typename V>
@@ -70,32 +72,35 @@ radix_tree_node<V>::~radix_tree_node() {
 }
 
 template <typename V>
-void radix_tree_node<V>::swap(radix_tree_node<V> &other) {
+void radix_tree_node<V>::swap(radix_tree_node<V>& other) {
   m_count = other.m_count;
   std::swap(m_first, other.m_first);
   std::swap(m_last, other.m_last);
   m_key.swap(other.m_key);
   m_children.swap(other.m_children);
+  std::swap(m_leaf, other.m_leaf);
   std::swap(m_heap, other.m_heap);
 }
 
 template <typename V>
 class radix_tree_iter {
  public:
-  radix_tree_iter(const radix_tree_node<V> *const begin, const radix_tree_node<V> *const end, int count,
+  radix_tree_iter(const radix_tree_node<V>* const begin,
+                  const radix_tree_node<V>* const end,
+                  int count,
                   bool order = true)
-      : m_begin(begin)
-      , m_end(end)
-      , m_current(begin)
-      , m_index(0)
-      , m_cursor(0)
-      , m_count(count)
-      , m_order(order) {}
+      : m_begin(begin),
+        m_end(end),
+        m_current(begin),
+        m_index(0),
+        m_cursor(0),
+        m_count(count),
+        m_order(order) {}
   radix_tree_iter() = default;
-  radix_tree_iter(const radix_tree_iter &) = default;
+  radix_tree_iter(const radix_tree_iter&) = default;
   ~radix_tree_iter() = default;
 
-  radix_tree_iter &operator=(const radix_tree_iter &iter) {
+  radix_tree_iter& operator=(const radix_tree_iter& iter) {
     m_begin = iter.m_current;
     m_end = iter.m_end;
     m_count = iter.m_count;
@@ -106,24 +111,23 @@ class radix_tree_iter {
   }
 
  private:
-  const radix_tree_node<V> *m_begin = nullptr;
-  const radix_tree_node<V> *m_end = nullptr;
-  const radix_tree_node<V> *m_current = nullptr;
+  const radix_tree_node<V>* m_begin = nullptr;
+  const radix_tree_node<V>* m_end = nullptr;
+  const radix_tree_node<V>* m_current = nullptr;
   std::size_t m_index = 0;
   int m_cursor = 0;
   bool m_order = true;
   int m_count = 0;
 
  public:
-  int count() {
-    return m_count;
-  }
+  int count() { return m_count; }
 
   void reset(int start, int count) {
     m_cursor = 0;
     m_count = count;
     for (int skip = 0; skip < start; ++skip) {
-      if (m_begin != nullptr && m_begin != m_end && m_begin->m_last != nullptr) {
+      if (m_begin != nullptr && m_begin != m_end &&
+          m_begin->m_last != nullptr) {
         m_begin = m_begin->m_last;
       }
     }
@@ -143,9 +147,7 @@ class radix_tree_iter {
     return true;
   }
 
-  V value() const {
-    return m_current->m_value->at(m_index);
-  }
+  V value() const { return m_current->m_value->at(m_index); }
 
   void next() {
     ++m_index;
