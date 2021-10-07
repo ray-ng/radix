@@ -486,9 +486,9 @@ void radix_tree<V>::finish(std::function<bool(V, V)> compfunc,
             heap_insert(current->m_heap, p, compfunc, recall_limit);
           }
         }
-        if (temp == current->m_last) {
-          break;
-        }
+      }
+      if (temp == current->m_last) {
+        break;
       }
       temp = temp->m_last;
     }
