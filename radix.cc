@@ -471,14 +471,12 @@ void radix_tree<V>::finish(std::function<bool(V, V)> compfunc,
 
     int range_index = 0;
     radix_tree_node<V>* temp = current->m_first;
-    bool skip_range = false;
     while (temp != nullptr) {
-      if (range_index < heap_range.size()) {
-        if (!skip_range && temp == heap_range[range_index].first) {
-          skip_range = true;
-        }
-      }
-      if (!skip_range) {
+      if (range_index < heap_range.size() &&
+          temp == heap_range[range_index].first) {
+        temp = heap_range[range_index].second;
+        ++range_index;
+      } else {
         if (temp->m_value != nullptr) {
           for (V p : *temp->m_value) {
             if (item_set.count(p) > 0) {
@@ -490,12 +488,6 @@ void radix_tree<V>::finish(std::function<bool(V, V)> compfunc,
         }
         if (temp == current->m_last) {
           break;
-        }
-      }
-      if (range_index < heap_range.size()) {
-        if (skip_range && temp == heap_range[range_index].second) {
-          skip_range = false;
-          ++range_index;
         }
       }
       temp = temp->m_last;
